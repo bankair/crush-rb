@@ -67,7 +67,7 @@ class Archive
     dbg("[#{self.class}] Starting compression")
     success = system("tar -c#{compression_option}vf #{target_path} #{source} 2> #{log}")
     dbg("[#{self.class}] Compression attempt complete: #{success ? :success : :failure}")
-    return if success
+    return self if success
 
     warn("Error compressing #{source} to #{self.class} format")
     begin
@@ -117,12 +117,17 @@ class Xz < Archive
   end
 end
 
+FORMATS = [Gzip, Bzip2, Xz].freeze
+
 result = nil
 
 Dir.mktmpdir do |tempdir_path|
   dbg("Working in temporary directory #{tempdir_path}")
-  archives = [Gzip, Bzip2, Xz].map { |archive_class| archive_class.new(tempdir_path, source) }
-  archives.each(&:compress!)
+
+  archives = FORMATS.map { |archive_class| archive_class.new(tempdir_path, source) }
+
+  threads = archives.map { |archive| Thread.new { archive.compress! } }
+  threads.each(&:join)
   archives.each { |archive| dbg("#{archive.target_file}:\tSize=#{archive.size}") }
   smallest, _others = archives.sort_by(&:size)
   dbg("Keeping #{smallest.target_file}")
