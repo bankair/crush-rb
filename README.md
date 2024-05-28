@@ -1,8 +1,9 @@
 # Crush-rb
 
-Welcome to **Crush-rb** – the ultimate file compression tool designed to shave off those extra bytes and streamline your archiving process!
+<img align="right" height="150" width="150"
+     title="crush-rb logo" src="logo.png">
 
-## Overview
+Welcome to **Crush-rb** – the ultimate file compression tool designed to shave off those extra bytes and streamline your archiving process!
 
 Crush-rb is a powerful command line utility that compresses files in three different formats: **gzip**, **bzip2**, and **xz**. After compressing your files, Crush-rb automatically selects and retains the smallest compressed file, ensuring that you always save maximum space with minimal effort.
 
