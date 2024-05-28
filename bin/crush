@@ -1,0 +1,133 @@
+#!/usr/bin/env ruby
+
+require 'tmpdir'
+
+VERBOSE = !%w[0 false].include?(ENV.fetch('VERBOSE', '0'))
+
+def dbg(msg = nil)
+  warn(msg || yield) if VERBOSE
+end
+
+def usage!(exit_code: 0)
+  method(exit_code.zero? ? :puts : :warn)
+    .call("Usage: crush [SWITCHES] path/to/directory/to/compress\n\t-h,--help:\tShow this message")
+  exit(exit_code)
+end
+
+dbg { "VERBOSE=#{ENV.fetch('VERBOSE')}; verbose mode is enabled" }
+
+usage! if %w[-h --help].any? { |help_opt| ARGV.include?(help_opt) }
+usage!(exit_code: 1) unless ARGV.size == 1
+
+source = ARGV.first
+dbg("Source file/directory: #{source}")
+unless File.exist?(source)
+  warn("File does not exist: #{source}")
+  exit(1)
+end
+
+# Base class of all 3 archive options
+class Archive
+  attr_accessor :target_directory, :source
+
+  def initialize(target_directory, source)
+    self.target_directory = target_directory
+    self.source = source
+  end
+
+  def basename
+    File.basename(source)
+  end
+
+  def ext
+    raise NotImplementedError
+  end
+
+  def target_file
+    "#{basename}.tar.#{ext}"
+  end
+
+  def target_path
+    File.join(target_directory, target_file)
+  end
+
+  def compression_option
+    raise NotImplementedError
+  end
+
+  def log
+    File.join(target_directory, "#{ext}.log")
+  end
+
+  def size
+    File.size(target_path)
+  end
+
+  def compress!
+    dbg("[#{self.class}] Starting compression")
+    success = system("tar -c#{compression_option}vf #{target_path} #{source} 2> #{log}")
+    dbg("[#{self.class}] Compression attempt complete: #{success ? :success : :failure}")
+    return if success
+
+    warn("Error compressing #{source} to #{self.class} format")
+    begin
+      warn(File.read(log))
+    rescue StandardError
+      warn("Could not read log file #{log}")
+    end
+    exit(2)
+  end
+
+  def move_to!(dir)
+    dbg("[#{self.class}] Moving #{target_path} to #{dir}")
+    File.rename(target_path, File.join(dir, File.basename(target_file)))
+  end
+end
+
+# Compress using gzip
+class Gzip < Archive
+  def ext
+    :gz
+  end
+
+  def compression_option
+    :z
+  end
+end
+
+# Compress using gzip
+class Bzip2 < Archive
+  def ext
+    :bz2
+  end
+
+  def compression_option
+    :j
+  end
+end
+
+# Compress using gzip
+class Xz < Archive
+  def ext
+    :xz
+  end
+
+  def compression_option
+    :J
+  end
+end
+
+result = nil
+
+Dir.mktmpdir do |tempdir_path|
+  dbg("Working in temporary directory #{tempdir_path}")
+  archives = [Gzip, Bzip2, Xz].map { |archive_class| archive_class.new(tempdir_path, source) }
+  archives.each(&:compress!)
+  archives.each { |archive| dbg("#{archive.target_file}:\tSize=#{archive.size}") }
+  smallest, _others = archives.sort_by(&:size)
+  dbg("Keeping #{smallest.target_file}")
+  smallest.move_to!(Dir.pwd)
+  result = smallest.target_file
+end
+
+puts result
